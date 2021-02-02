@@ -61,7 +61,7 @@
                 if ($resourcePosition -lt $dependencyPosition) {
                     if ($dependencyPosition -gt $movePosition)
                     {
-                        # We don't use it.. but ok, jkust as a flag for now
+                        # We don't use it.. but ok, just as a flag for now
                         $movePosition=$dependencyPosition
                     }
                 }
@@ -78,7 +78,7 @@
         $workspaceTemplateJson=$workspaceTemplate | ConvertTo-Json -Depth 50 | Format-Json
         $workspaceTemplateJson=$workspaceTemplateJson -replace '"variables": null,','' -replace '    null,','' 
 
-        # Json parser powershell is not perfect
+        # Json parser powershell is not perfect, so remove some of the json escapes
         $workspaceTemplateJson=$workspaceTemplateJson -replace "\\u003c" , "<" -replace "\\u003e", ">" -replace "\\u0027",  "'"
         $workspaceTemplateJson | Out-File -Encoding ascii "$templateFile"  # well.. maybe less.. maybe more
         "Debug"
