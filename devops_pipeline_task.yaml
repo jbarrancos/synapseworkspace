@@ -72,6 +72,29 @@
                 $workspaceTemplate.resources+=$pipelineResource
             }
         }
+        
+        # Same for Linked Services
+        foreach ($lsResource in ($workspaceTemplate.resources | Where-Object { $_.type -eq "Microsoft.Synapse/workspaces/linkedServices" })) {
+            $movePosition=-1
+            $resourcePosition=$workspaceTemplate.resources.IndexOf($lsResource)
+
+            foreach ($lsDependency in (($lsResource.dependsOn | Where-Object { $_ -like "linkedServices/*" }) -split '/')[1]) {
+                $dependencyResource=$workspaceTemplate.resources|Where-Object { $_.name -eq $lsDependency }
+                $dependencyPosition=$workspaceTemplate.resources.IndexOf($dependencyResource)
+                if ($resourcePosition -lt $dependencyPosition) {
+                    if ($dependencyPosition -gt $movePosition)
+                    {
+                        # We don't use it.. but ok, jkust as a flag for now
+                        $movePosition=$dependencyPosition
+                    }
+                }
+            }
+                # We now move the whole thing to the back
+            if ($movePosition -gt $resourcePosition) {
+                $workspaceTemplate.resources[$resourcePosition]=$null
+                $workspaceTemplate.resources+=$lsResource
+            }
+        }
 
 
         # Remove some of the removed parts.. need to fix this with proper json manipulation... but ok
