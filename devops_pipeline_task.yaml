@@ -1,4 +1,4 @@
-  # WA - TASK NOT WORKING BELOW WITH CONCAT AND DEPENDENCIES
+  # WA - TASK NOT WORKING WITH CONCAT AND DEPENDENCIES
     - powershell: |
         # This script can be used to preproces the templateworkspace.json in the publish branch to fix issues related to deployment task in devops
         # Concat not working / parsed by task and dependsOn in pipelines over other pipelines not working
