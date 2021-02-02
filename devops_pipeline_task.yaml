@@ -73,7 +73,6 @@
 
 
         # Remove some of the removed parts.. need to fix this with proper json manipulation... but ok
-        # Remove some of the removed parts.. need to fix this with proper json manipulation... but ok
         $workspaceTemplateJson=$workspaceTemplate | ConvertTo-Json -Depth 50 | Format-Json
         $workspaceTemplateJson=$workspaceTemplateJson -replace '"variables": null,','' -replace '    null,','' 
 
