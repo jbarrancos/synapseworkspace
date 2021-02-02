@@ -28,7 +28,7 @@
         $workspaceTemplate.variables=$null
 
 
-        # Move over resources and remove concat in name and dependson
+        # Remove concat in resource name and dependson
         foreach ($resource in $workspaceTemplate.resources)
         {
             # Resource Names start in concat /
