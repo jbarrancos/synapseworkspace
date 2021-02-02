@@ -55,7 +55,7 @@
             $movePosition=-1
             $resourcePosition=$workspaceTemplate.resources.IndexOf($pipelineResource)
 
-            foreach ($pipelineDependency in (($pipelineResource.dependsOn | Where-Object { $_ -like "pipelines/*" }) -split '/')[1]) {
+            foreach ($pipelineDependency in ($pipelineResource.dependsOn -split '/')[1]) {
                 $dependencyResource=$workspaceTemplate.resources|Where-Object { $_.name -eq $pipelineDependency }
                 $dependencyPosition=$workspaceTemplate.resources.IndexOf($dependencyResource)
                 if ($resourcePosition -lt $dependencyPosition) {
