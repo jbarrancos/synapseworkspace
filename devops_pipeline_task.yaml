@@ -75,12 +75,12 @@
 
 
         # Remove some of the removed parts.. need to fix this with proper json manipulation... but ok
-        $workspaceTemplateJson=$workspaceTemplate | ConvertTo-Json -Depth 50 | Format-Json
+        $workspaceTemplateJson=$workspaceTemplate | ConvertTo-Json -Depth 50 | Format-Json   # well.. maybe less.. maybe more
         $workspaceTemplateJson=$workspaceTemplateJson -replace '"variables": null,','' -replace '    null,','' 
 
         # Json parser powershell is not perfect, so remove some of the json escapes
         $workspaceTemplateJson=$workspaceTemplateJson -replace "\\u003c" , "<" -replace "\\u003e", ">" -replace "\\u0027",  "'"
-        $workspaceTemplateJson | Out-File -Encoding ascii "$templateFile"  # well.. maybe less.. maybe more
+        $workspaceTemplateJson | Out-File -Encoding ascii "$templateFile"
         "Debug"
         $workspaceTemplateJson
 
