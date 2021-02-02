@@ -22,6 +22,8 @@
                 $line
             }) -Join "`n"
         }
+        
+        
         # Remove variables concat doesn't work and we will be removing all other "concat" as it fails deployment
         $workspaceTemplate.variables=$null
 
