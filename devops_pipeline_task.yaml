@@ -1,0 +1,86 @@
+  # WA - TASK NOT WORKING BELOW WITH CONCAT AND DEPENDENCIES
+    - powershell: |
+        # This script can be used to preproces the templateworkspace.json in the publish branch to fix issues related to deployment task in devops
+        # Concat not working / parsed by task and dependsOn in pipelines over other pipelines not working
+        $templateFile="$(build.artifactstagingdirectory)\branch_publish\TemplateForWorkspace.json"
+
+        $workspaceTemplate=Get-Content $templateFile | ConvertFrom-Json 
+
+        # Formats JSON in a nicer format than the built-in ConvertTo-Json does.
+        function Format-Json([Parameter(Mandatory, ValueFromPipeline)][String] $json) {
+            $indent = 0;
+            ($json -Split "`n" | % {
+                if ($_ -match '[\}\]]\s*,?\s*$') {
+                    # This line ends with ] or }, decrement the indentation level
+                    $indent--
+                }
+                $line = ('  ' * $indent) + $($_.TrimStart() -replace '":  (["{[])', '": $1' -replace ':  ', ': ')
+                if ($_ -match '[\{\[]\s*$') {
+                    # This line ends with [ or {, increment the indentation level
+                    $indent++
+                }
+                $line
+            }) -Join "`n"
+        }
+        # Remove variables concat doesn't work and we will be removing all other "concat" as it fails deployment
+        $workspaceTemplate.variables=$null
+
+
+        # Move over resources and remove concat in name and dependson
+        foreach ($resource in $workspaceTemplate.resources)
+        {
+            # Resource Names start in concat /
+            if ($resource.Name -Match "\[concat.*'\/(?<resourcename>.*)\'\)") 
+            {        
+                $resource.name = $Matches["resourcename"]
+            }
+
+            # dependson 
+
+            for ($i = 0; $i -lt $resource.dependson.Count; $i++) {
+                if ( $resource.dependson[$i] -Match "\[concat.*'\/(?<resourcename>.*)\'\)") 
+                {     
+                      
+                    $resource.dependson[$i] = $Matches["resourcename"]
+                }
+            }
+          
+        }
+        # We need to fix the dependency in pipelines. Pipelines which depend on others need to be put after that one
+        # Not sure if this logic will survive complex dependencies
+
+        foreach ($pipelineResource in ($workspaceTemplate.resources | Where-Object { $_.type -eq "Microsoft.Synapse/workspaces/pipelines" })) {
+            $movePosition=-1
+            $resourcePosition=$workspaceTemplate.resources.IndexOf($pipelineResource)
+
+            foreach ($pipelineDependency in (($pipelineResource.dependsOn | Where-Object { $_ -like "pipelines/*" }) -split '/')[1]) {
+                $dependencyResource=$workspaceTemplate.resources|Where-Object { $_.name -eq $pipelineDependency }
+                $dependencyPosition=$workspaceTemplate.resources.IndexOf($dependencyResource)
+                if ($resourcePosition -lt $dependencyPosition) {
+                    if ($dependencyPosition -gt $movePosition)
+                    {
+                        # We don't use it.. but ok, jkust as a flag for now
+                        $movePosition=$dependencyPosition
+                    }
+                }
+            }
+                # We now move the whole thing to the back
+            if ($movePosition -gt $resourcePosition) {
+                $workspaceTemplate.resources[$resourcePosition]=$null
+                $workspaceTemplate.resources+=$pipelineResource
+            }
+        }
+
+
+        # Remove some of the removed parts.. need to fix this with proper json manipulation... but ok
+        # Remove some of the removed parts.. need to fix this with proper json manipulation... but ok
+        $workspaceTemplateJson=$workspaceTemplate | ConvertTo-Json -Depth 50 | Format-Json
+        $workspaceTemplateJson=$workspaceTemplateJson -replace '"variables": null,','' -replace '    null,','' 
+
+        # Json parser powershell is not perfect
+        $workspaceTemplateJson=$workspaceTemplateJson -replace "\\u003c" , "<" -replace "\\u003e", ">" -replace "\\u0027",  "'"
+        $workspaceTemplateJson | Out-File -Encoding ascii "$templateFile"  # well.. maybe less.. maybe more
+        "Debug"
+        $workspaceTemplateJson
+
+      displayName: "Fix workspacetemplate"
