@@ -63,7 +63,7 @@
         }}}
 
 
-        $workspaceTemplateJson=$jsonArray | Format-Json | -replace "\\u003c" , "<" -replace "\\u003e", ">" -replace "\\u0027",  "'"
+        $workspaceTemplateJson=$jsonArray | ConvertTo-Json -Depth 99| Format-Json | -replace "\\u003c" , "<" -replace "\\u003e", ">" -replace "\\u0027",  "'"
 
         # Json parser powershell is not perfect, so remove some of the json escapes
         $workspaceTemplateJson=$workspaceTemplateJson -replace "\\u003c" , "<" -replace "\\u003e", ">" -replace "\\u0027",  "'"
