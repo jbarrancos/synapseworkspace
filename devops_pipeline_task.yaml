@@ -24,10 +24,12 @@
         
         $fileContent = Get-Content  $templateFile
 
-        #Replace Default WorkspaceSql and Storage
+        #Replace Default WorkspaceSql and Storage  may not be modified
+        $obj=$jsonArray.resources | Where-Object {$_.name -like "*-WorkspaceDefaultSqlServer')]" }
+        $jsonArray.resources.Remove($obj)
+        $obj=$jsonArray.resources | Where-Object { $_.name -like "*-WorkspaceDefaultStorage')]"  }
+        $jsonArray.resources.Remove($obj)
 
-        $fileContent = $fileContent -replace "(?<pre>\""name\"".*, '\/).*(?<post>-WorkspaceDefaultSqlServer')", "`${pre}', parameters('workspaceName'),'`${post}"
-        $fileContent = $fileContent -replace "(?<pre>\""name\"".*, '\/).*(?<post>-WorkspaceDefaultStorage')", "`${pre}', parameters('workspaceName'),'`${post}"
 
         # Convert json to object and covert array of resources with Arraylist
         $jsonArray=$fileContent | ConvertFrom-Json
