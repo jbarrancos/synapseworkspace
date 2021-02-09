@@ -4,8 +4,6 @@
         # Concat not working / parsed by task and dependsOn in pipelines over other pipelines not working
         $templateFile="$(build.artifactstagingdirectory)\branch_publish\TemplateForWorkspace.json"
 
-        $workspaceTemplate=Get-Content $templateFile | ConvertFrom-Json 
-
         # Formats JSON in a nicer format than the built-in ConvertTo-Json does.
         function Format-Json([Parameter(Mandatory, ValueFromPipeline)][String] $json) {
             $indent = 0;
@@ -24,82 +22,48 @@
         }
         
         
-        # Remove variables concat doesn't work and we will be removing all other "concat" as it fails deployment
-        $workspaceTemplate.variables=$null
+        $fileContent = Get-Content  $templateFile
+
+        #Replace Default WorkspaceSql and Storage
+
+        $fileContent = $fileContent -replace "(?<pre>\""name\"".*, '\/).*(?<post>-WorkspaceDefaultSqlServer')", "`${pre}', parameters('workspaceName'),'`${post}"
+        $fileContent = $fileContent -replace "(?<pre>\""name\"".*, '\/).*(?<post>-WorkspaceDefaultStorage')", "`${pre}', parameters('workspaceName'),'`${post}"
+
+        # Convert json to object and covert array of resources with Arraylist
+        $jsonArray=$fileContent | ConvertFrom-Json
+        $jsonArray.resources=[System.Collections.ArrayList]($jsonArray.resources)
 
 
-        # Remove concat in resource name and dependson
-        foreach ($resource in $workspaceTemplate.resources)
-        {
-            # Resource Names start in concat /
-            if ($resource.Name -Match "\[concat.*'\/(?<resourcename>.*)\'\)") 
-            {        
-                $resource.name = $Matches["resourcename"]
-            }
+        $typeList=@("pipelines","datasets","linkedServices") 
+        foreach ($type in $typeList) {
+        "ordering $type"
+        $changed=$true
+        while ($changed) {
+        # Reorder dependencies on pipelines
+        $pipelineResources=[System.Collections.ArrayList]($jsonArray.resources | Where-Object { $_.type -like "*/$type"})
+        $changed=$false
+        foreach ($pipelineResource in $pipelineResources)  { 
+          $dPosition=0
+          foreach ($pipelineDependency in ($pipelineResource.dependsOn | Where-Object { $_ -like '*, ''/$type/*' })) {
+            $matched=$pipelineDependency -match ".*/$type(/.*)'"
+            $pipelineDependency=$pipelineResources | Where-Object { $_.Name -like "*, '$($Matches[1])')]" }
+            $tempPosition=$pipelineResources.IndexOf($pipelineDependency)
+            if ($tempPosition -gt $dPosition) {
+              $dPosition=$tempPosition
+            }			
+          }
+          $pPosition=$pipelineResources.IndexOf($pipelineResource)
 
-            # dependson 
-
-            for ($i = 0; $i -lt $resource.dependson.Count; $i++) {
-                if ( $resource.dependson[$i] -Match "\[concat.*'\/(?<resourcename>.*)\'\)") 
-                {     
-                      
-                    $resource.dependson[$i] = $Matches["resourcename"]
-                }
-            }
-          
-        }
-        # We need to fix the dependency in pipelines. Pipelines which depend on others need to be put after that one
-        # Not sure if this logic will survive complex dependencies
-
-        foreach ($pipelineResource in ($workspaceTemplate.resources | Where-Object { $_.type -eq "Microsoft.Synapse/workspaces/pipelines" })) {
-            $movePosition=-1
-            $resourcePosition=$workspaceTemplate.resources.IndexOf($pipelineResource)
-
-            foreach ($pipelineDependency in ($pipelineResource.dependsOn -split '/')[1]) {
-                $dependencyResource=$workspaceTemplate.resources|Where-Object { $_.name -eq $pipelineDependency }
-                $dependencyPosition=$workspaceTemplate.resources.IndexOf($dependencyResource)
-                if ($resourcePosition -lt $dependencyPosition) {
-                    if ($dependencyPosition -gt $movePosition)
-                    {
-                        # We don't use it.. but ok, just as a flag for now
-                        $movePosition=$dependencyPosition
-                    }
-                }
-            }
-                # We now move the whole thing to the back
-            if ($movePosition -gt $resourcePosition) {
-                $workspaceTemplate.resources[$resourcePosition]=$null
-                $workspaceTemplate.resources+=$pipelineResource
-            }
-        }
-        
-        # Same for Linked Services
-        foreach ($lsResource in ($workspaceTemplate.resources | Where-Object { $_.type -eq "Microsoft.Synapse/workspaces/linkedServices" })) {
-            $movePosition=-1
-            $resourcePosition=$workspaceTemplate.resources.IndexOf($lsResource)
-
-            foreach ($lsDependency in (($lsResource.dependsOn | Where-Object { $_ -like "linkedServices/*" }) -split '/')[1]) {
-                $dependencyResource=$workspaceTemplate.resources|Where-Object { $_.name -eq $lsDependency }
-                $dependencyPosition=$workspaceTemplate.resources.IndexOf($dependencyResource)
-                if ($resourcePosition -lt $dependencyPosition) {
-                    if ($dependencyPosition -gt $movePosition)
-                    {
-                        # We don't use it.. but ok, jkust as a flag for now
-                        $movePosition=$dependencyPosition
-                    }
-                }
-            }
-                # We now move the whole thing to the back
-            if ($movePosition -gt $resourcePosition) {
-                $workspaceTemplate.resources[$resourcePosition]=$null
-                $workspaceTemplate.resources+=$lsResource
-            }
-        }
+            if ($pPosition -lt $dPosition) {
+            "Need to move $pPosition after $dPosition"
+            $jsonArray.resources.Remove($pipelineResource)
+            $jsonArray.resources.Insert($dPosition,$pipelineResource)
+            $changed=$true
+          }
+        }}}
 
 
-        # Remove some of the removed parts.. need to fix this with proper json manipulation... but ok
-        $workspaceTemplateJson=$workspaceTemplate | ConvertTo-Json -Depth 50 | Format-Json   # well.. maybe less.. maybe more
-        $workspaceTemplateJson=$workspaceTemplateJson -replace '"variables": null,','' -replace '    null,','' 
+        $workspaceTemplateJson=$jsonArray | Format-Json | -replace "\\u003c" , "<" -replace "\\u003e", ">" -replace "\\u0027",  "'"
 
         # Json parser powershell is not perfect, so remove some of the json escapes
         $workspaceTemplateJson=$workspaceTemplateJson -replace "\\u003c" , "<" -replace "\\u003e", ">" -replace "\\u0027",  "'"
