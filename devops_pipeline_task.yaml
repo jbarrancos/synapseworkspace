@@ -1,8 +1,8 @@
-  # WA - TASK NOT WORKING WITH CONCAT AND DEPENDENCIES
+            # WA - TASK NOT WORKING WIT DEPENDENCIES AND KEEPS DEFAULTWORKSPACE/SQL
     - powershell: |
         # This script can be used to preproces the templateworkspace.json in the publish branch to fix issues related to deployment task in devops
-        # Concat not working / parsed by task and dependsOn in pipelines over other pipelines not working
-        $templateFile="$(build.artifactstagingdirectory)\branch_publish\TemplateForWorkspace.json"
+        # Renames DefaultWorkspace & SQL and dependsOn in pipelines over other pipelines not working
+        $templateFile="$(build.artifactstagingdirectory)\synws_publish\TemplateForWorkspace.json"
 
         # Formats JSON in a nicer format than the built-in ConvertTo-Json does.
         function Format-Json([Parameter(Mandatory, ValueFromPipeline)][String] $json) {
@@ -44,7 +44,7 @@
         $changed=$false
         foreach ($pipelineResource in $pipelineResources)  { 
           $dPosition=0
-          foreach ($pipelineDependency in ($pipelineResource.dependsOn | Where-Object { $_ -like '*, ''/$type/*' })) {
+          foreach ($pipelineDependency in ($pipelineResource.dependsOn | Where-Object { $_ -like "*, '/$type/*" })) {
             $matched=$pipelineDependency -match ".*/$type(/.*)'"
             $pipelineDependency=$pipelineResources | Where-Object { $_.Name -like "*, '$($Matches[1])')]" }
             $tempPosition=$pipelineResources.IndexOf($pipelineDependency)
@@ -63,7 +63,7 @@
         }}}
 
 
-        $workspaceTemplateJson=$jsonArray | ConvertTo-Json -Depth 99| Format-Json | -replace "\\u003c" , "<" -replace "\\u003e", ">" -replace "\\u0027",  "'"
+        $workspaceTemplateJson=$jsonArray | ConvertTo-Json -Depth 99| Format-Json
 
         # Json parser powershell is not perfect, so remove some of the json escapes
         $workspaceTemplateJson=$workspaceTemplateJson -replace "\\u003c" , "<" -replace "\\u003e", ">" -replace "\\u0027",  "'"
