@@ -1,7 +1,11 @@
-            # WA - TASK NOT WORKING WIT DEPENDENCIES AND KEEPS DEFAULTWORKSPACE/SQL
+    # WA - TASK NOT WORKING WIT DEPENDENCIES AND KEEPS DEFAULTWORKSPACE/SQL
     - powershell: |
         # This script can be used to preproces the templateworkspace.json in the publish branch to fix issues related to deployment task in devops
         # Renames DefaultWorkspace & SQL and dependsOn in pipelines over other pipelines not working
+
+
+        #All types: integrationRuntime, sqlpool linkedservices, credential, notebook, sqlscript, sparkJobDefinition, dataset, dataflow
+
         $templateFile="$(build.artifactstagingdirectory)\synws_publish\TemplateForWorkspace.json"
 
         # Formats JSON in a nicer format than the built-in ConvertTo-Json does.
@@ -20,21 +24,18 @@
                 $line
             }) -Join "`n"
         }
-        
-        
+                
         $fileContent = Get-Content  $templateFile
-
-        #Replace Default WorkspaceSql and Storage  may not be modified
-        $obj=$jsonArray.resources | Where-Object {$_.name -like "*-WorkspaceDefaultSqlServer')]" }
-        $jsonArray.resources.Remove($obj)
-        $obj=$jsonArray.resources | Where-Object { $_.name -like "*-WorkspaceDefaultStorage')]"  }
-        $jsonArray.resources.Remove($obj)
-
 
         # Convert json to object and covert array of resources with Arraylist
         $jsonArray=$fileContent | ConvertFrom-Json
         $jsonArray.resources=[System.Collections.ArrayList]($jsonArray.resources)
 
+        # Remove object that may not be modified
+        $obj=$jsonArray.resources | Where-Object {$_.name -like "*-WorkspaceDefaultSqlServer')]" }
+        $jsonArray.resources.Remove($obj)
+        $obj=$jsonArray.resources | Where-Object { $_.name -like "*-WorkspaceDefaultStorage')]"  }
+        $jsonArray.resources.Remove($obj)
 
         $typeList=@("pipelines","datasets","linkedServices") 
         foreach ($type in $typeList) {
@@ -45,17 +46,17 @@
         $pipelineResources=[System.Collections.ArrayList]($jsonArray.resources | Where-Object { $_.type -like "*/$type"})
         $changed=$false
         foreach ($pipelineResource in $pipelineResources)  { 
-          $dPosition=0
+          $dPosition=-1
           foreach ($pipelineDependency in ($pipelineResource.dependsOn | Where-Object { $_ -like "*, '/$type/*" })) {
             $matched=$pipelineDependency -match ".*/$type(/.*)'"
             $pipelineDependency=$pipelineResources | Where-Object { $_.Name -like "*, '$($Matches[1])')]" }
-            $tempPosition=$pipelineResources.IndexOf($pipelineDependency)
+            $tempPosition=$jsonArray.resources.IndexOf($pipelineDependency)
             if ($tempPosition -gt $dPosition) {
               $dPosition=$tempPosition
             }			
           }
-          $pPosition=$pipelineResources.IndexOf($pipelineResource)
 
+            $pPosition=$jsonArray.resources.IndexOf($pipelineResource)
             if ($pPosition -lt $dPosition) {
             "Need to move $pPosition after $dPosition"
             $jsonArray.resources.Remove($pipelineResource)
@@ -63,7 +64,6 @@
             $changed=$true
           }
         }}}
-
 
         $workspaceTemplateJson=$jsonArray | ConvertTo-Json -Depth 99| Format-Json
 
