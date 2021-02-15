@@ -1,12 +1,12 @@
     # WA - TASK NOT WORKING WIT DEPENDENCIES AND KEEPS DEFAULTWORKSPACE/SQL
     - powershell: |
-        # This script can be used to preproces the templateworkspace.json in the publish branch to fix issues related to deployment task in devops
+        # This script can be used to preprocess the templateworkspace.json in the publish branch to fix issues related to deployment task in devops
         # Renames DefaultWorkspace & SQL and dependsOn in pipelines over other pipelines not working
 
 
         #All types: integrationRuntime, sqlpool linkedservices, credential, notebook, sqlscript, sparkJobDefinition, dataset, dataflow
 
-        $templateFile="$(build.artifactstagingdirectory)\synws_publish\TemplateForWorkspace.json"
+        $templateFile="$(build.artifactstagingdirectory)\workspace_publish\TemplateForWorkspace.json"
 
         # Formats JSON in a nicer format than the built-in ConvertTo-Json does.
         function Format-Json([Parameter(Mandatory, ValueFromPipeline)][String] $json) {
