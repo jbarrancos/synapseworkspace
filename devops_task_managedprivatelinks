@@ -1,0 +1,105 @@
+    # Create the managed private links through API calls since the normal deployment will not create them
+    # Please note that the names need to have been replaced per environment.
+    - task: AzurePowerShell@4
+      displayName: 'Create managed private links'
+      enabled: true 
+      continueOnError: false 
+      inputs:
+        azuresubscription: '${{ variables.varSubscription}}'
+        ScriptType: InlineScript
+        AzurePowerShellVersion: LatestVersion
+        Inline: |
+          Function Update-SynapsePEPAndApproveLink {
+              param(
+                [string]$resourceId, 
+                [string]$privEndpointName,
+                [string]$privEndPointGroupId,
+                [string]$workspaceName
+                )
+            
+            if ($privEndPointGroupId -eq "dfs") {
+              $apiversion="2019-06-01"
+            } else {
+              $apiversion="2018-06-01-preview"
+            }
+            
+
+            $context = [Microsoft.Azure.Commands.Common.Authentication.Abstractions.AzureRmProfileProvider]::Instance.Profile.DefaultContext
+            $azureToken = [Microsoft.Azure.Commands.Common.Authentication.AzureSession]::Instance.AuthenticationFactory.Authenticate($context.Account, $context.Environment, $context.Tenant.Id.ToString(), $null, [Microsoft.Azure.Commands.Common.Authentication.ShowDialog]::Never, $null, "https://management.azure.com").AccessToken
+            $synapseToken = [Microsoft.Azure.Commands.Common.Authentication.AzureSession]::Instance.AuthenticationFactory.Authenticate($context.Account, $context.Environment, $context.Tenant.Id.ToString(), $null, [Microsoft.Azure.Commands.Common.Authentication.ShowDialog]::Never, $null, "https://dev.azuresynapse.net").AccessToken
+
+        
+            $synapseHeaders = @{
+                "authorization" = "Bearer $synapseToken"
+                "content-type"  = "application/json"
+            }
+
+            "Checking current status of PEP"
+            $getPEPUrl="https://$($workspaceName).dev.azuresynapse.net/managedVirtualNetworks/default/managedPrivateEndpoints?api-version=2019-06-01-preview"
+            $status=Invoke-RestMethod -Uri $getPEPUrl -Headers $synapseHeaders
+            $pepstatus=$status.value | Where-Object { $_.name -eq "$privEndpointName" }
+            
+            if (($pepstatus) -and ($pepstatus.properties.provisioningState -eq "Succeeded")) {
+              Write-Host "Endpoint status is Succeeded"
+              if ($pepstatus.properties.connectionState.status -eq "Approved") {
+                "Connection is already approved also. Continueing on"
+                return
+              }
+            } else {
+
+              "Creating Managed PEP in Azure Synapse workspace"
+              $synapseBody = "{'name':'$privEndpointName','properties':{'privateLinkResourceId':'$resourceId','groupId':'$privEndPointGroupId'}}"
+              $synapseCreatePEPUri="https://$($workspaceName).dev.azuresynapse.net/managedVirtualNetworks/default/managedPrivateEndpoints/$($privEndpointName)?api-version=2019-06-01-preview"
+              $resp = try { Invoke-RestMethod -Method "PUT" -Headers $synapseHeaders -Body $synapseBody -Uri $synapseCreatePEPUri } catch { $_.Exception.Response }
+            }
+
+            "Checking and waiting till status is succeeded"
+            $timeout = new-timespan -Minutes 5
+            $sw = [diagnostics.stopwatch]::StartNew()
+            while ($sw.elapsed -lt $timeout){
+              $status=Invoke-RestMethod -Uri $getPEPUrl -Headers $synapseHeaders
+              $pepstatus=$status.value | Where-Object { $_.name -eq "$privEndpointName" }
+              if  ($pepstatus.properties.provisioningState -eq "Succeeded") {
+                 Write-Host "Provisioning succeeded"
+                 break
+              }
+              Write-Host "Status not ok yet: $($pepstatus.properties.provisioningState)"
+              start-sleep -seconds 5
+            }
+          
+            if  ($pepstatus.properties.provisioningState -ne "Succeeded") {
+                Write-Warning "Status is still not succeeded. Exiting"
+                return 1
+            }
+
+            "Approving"
+
+            $azureHeaders = @{
+                "authorization" = "Bearer $azureToken"
+                "content-type"  = "application/json"
+            }
+        
+            $getPrivateEndPointUri = "https://management.azure.com$($resourceId)/privateEndpointConnections?api-version=$apiversion"
+            "Retrieving endpoint ID for Resource $getPrivateEndPointUri"
+            $endpointInfo = Invoke-RestMethod -Method "GET" -Headers $azureHeaders -Uri $getPrivateEndPointUri
+            $privEndpointID = $endpointInfo.value.properties.privateEndpoint.id | Where-Object { $_ -like "*$privEndpointName" }
+            if (!$privEndpointID) {
+                throw "No endpoint found name ending with $privEndpointName on $resourceId" 
+            }
+
+            "Approve using Powershell"
+            Approve-AzPrivateEndpointConnection -ResourceId "$($endpointInfo.value.id)"
+            "Done"
+          }
+
+          $templateFile="$(build.artifactstagingdirectory)\synws_publish\TemplateForWorkspace.json"
+          $jsonObject=(Get-Content $templateFile) | ConvertFrom-Json
+
+          foreach ($pep in ($jsonObject.resources | Where-Object { $_.type -eq "Microsoft.Synapse/workspaces/managedVirtualNetworks/managedPrivateEndpoints"}))
+          {
+            $pepName=($pep.Name -split "," -split "'" -split "/")[6]
+            $pepResourceId=($pep.properties.privateLinkResourceId)
+            $pepGroupId=$pep.properties.groupId
+            "Updating PEP $pepName $pepGroupId $pepResourceId"
+            Update-SynapsePEPAndApproveLink -resourceId "$pepResourceId" -privEndpointName "$pepName" -privEndPointGroupId "$pepGroupId" -workspaceName "$(synapseWorkspaceName)"
+          }
